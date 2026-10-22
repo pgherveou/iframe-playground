@@ -13,7 +13,7 @@ npm run dev
 
 Open **http://localhost:5183**. The trusted renderer runs at **http://localhost:5184**. Both ports are fixed so an occupied port fails instead of silently changing the security boundary.
 
-Try the Contact, Avatar, and Contact list tabs. Change handles and props, test DOM access, and search or select a contact inside the list. The event log receives only the selected opaque handle. The React example and rendered iframe view show what the host actually has.
+Try the Contact, Avatar, and Contact list tabs. Change handles and props, test DOM access, and search or select a contact inside the list. In Contact list, the host receives the selected handle and uses it to display a separate Contact iframe. **Focus search** and **Clear selection** send commands without reloading the list or revealing its search text. The playground's event log shows the actual commands, selection events, and acknowledgments in both directions. The React example and rendered iframe view show what the host actually has.
 
 All contacts are fictional. Fonts and illustrated avatars are served locally; the running demo makes no third-party requests.
 
@@ -22,17 +22,28 @@ All contacts are fictional. Fonts and illustrated avatars are served locally; th
 The workspace contains a real, buildable npm package named `@opaque-ui/react`. It has not been published to the registry.
 
 ```tsx
+import { useRef } from 'react'
 import { Avatar, Contact, ContactList, ContactProvider } from '@opaque-ui/react'
+import type { ContactListRef } from '@opaque-ui/react'
 
 export function People() {
+  const list = useRef<ContactListRef>(null)
+
   return (
     <ContactProvider origin="http://localhost:5184">
       <Avatar contact_id="ct_7hk2" size="large" />
       <Contact contact_id="ct_7hk2" username avatar />
       <ContactList
+        ref={list}
         list_id="ls_4dn9"
         onSelect={(handle) => console.log(handle)}
+        onAction={(action) => console.log('Completed:', action)}
+        onMessage={(entry) => console.log(entry.direction, entry.message)}
       />
+      <button onClick={() => list.current?.focusSearch()}>Focus search</button>
+      <button onClick={() => list.current?.clearSelection()}>
+        Clear selection
+      </button>
     </ContactProvider>
   )
 }
@@ -55,12 +66,14 @@ The archive contains the compiled wrapper, TypeScript declarations, and document
 ```text
 Host application (localhost:5183)
   │  handle + component type + presentation props
+  │  explicit focus-search / clear-selection commands
   ▼
 Provider iframe (localhost:5184)
   │  server resolves handle and renders private HTML
   │  list search stays inside this document
   ▼
-Optional selection event → opaque contact handle only
+Selection event → opaque contact handle only
+Action result → request ID + action only
 ```
 
 - The host bundle imports only the React wrapper package. Contact records stay in the provider's server code.
@@ -71,9 +84,10 @@ Optional selection event → opaque contact handle only
 - Props are allowlisted. Updates navigate the iframe, resetting local search and selection state. No arbitrary CSS, HTML, callbacks, or resource URLs cross into it.
 - Frame dimensions depend only on public props, never on names, search results, or list length. There are no resize or readiness messages. Lists use a fixed viewport and scroll internally.
 - Selection messages are checked against the exact provider origin, iframe window, channel, protocol version, and payload shape. The callback receives just a handle.
+- The two allowed commands use `postMessage` with the exact provider target origin. The provider validates the parent origin, source window, channel, and exact schema before acting. Results must match a pending request ID and action; duplicates and unsolicited results are ignored. Commands preserve the iframe document and private search state.
 - The development host explicitly denies access to provider source through Vite filesystem routes.
 
-The protocol's only outgoing message is:
+Selection events contain no contact details:
 
 ```json
 {
@@ -84,6 +98,21 @@ The protocol's only outgoing message is:
   "handle": "ct_7hk2"
 }
 ```
+
+Commands and their acknowledgments have the same fields. The result changes only `type` to `"action-result"`:
+
+```json
+{
+  "protocol": "opaque-ui",
+  "version": 1,
+  "type": "command",
+  "channel": "frame-instance-id",
+  "request_id": "rq_829b47b5-faa1-4f71-a535-e028f8b0d128",
+  "action": "clear-selection"
+}
+```
+
+`onMessage` reports actual sent commands and validated incoming messages. The demo retains the last eight entries. Search text, names, image URLs, and result counts never appear in these messages.
 
 ## Scope of the privacy claim
 
@@ -102,7 +131,7 @@ npm run build
 npm run format:check
 ```
 
-Browser tests use an installed Google Chrome and start both development servers when needed. They check actual iframe rendering, blocked DOM and network access, visibility props, themes, private search, message validation, fixed geometry, and a narrow viewport. Each test also checks for uncaught browser errors.
+Browser tests use an installed Google Chrome and start both development servers when needed. They check actual iframe rendering, blocked DOM and network access, visibility props, themes, private search, both messaging directions, rejection of invalid messages, fixed geometry, and a narrow viewport. They also compare logged payloads with actual browser traffic and verify that commands preserve the iframe document and search state. Each test checks for uncaught browser errors.
 
 To test the built package, host, and provider together, stop `npm run dev` first:
 

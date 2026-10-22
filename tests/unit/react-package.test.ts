@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   Avatar,
   Contact,
@@ -9,6 +9,7 @@ import {
 } from '../../packages/react/src/index'
 import {
   createEmbedUrl,
+  createListMessenger,
   getSelectedHandle,
   normalizeProviderOrigin,
 } from '../../packages/react/src/protocol'
@@ -29,6 +30,167 @@ const selectionEvent = (overrides: Partial<MessageEvent<unknown>> = {}) => ({
   source: frameWindow,
   data: selection,
   ...overrides,
+})
+
+const createMessenger = () => {
+  const postMessage = vi.fn()
+  const source = { postMessage } as unknown as Window
+  const callbacks = {
+    onSelect: vi.fn(),
+    onAction: vi.fn(),
+    onMessage: vi.fn(),
+  }
+  const messenger = createListMessenger({ ...expectedFrame, source }, callbacks)
+  const resultEvent = (command: Record<string, unknown>) => ({
+    origin: providerOrigin,
+    source,
+    data: { ...command, type: 'action-result' },
+  })
+  return { messenger, postMessage, callbacks, resultEvent, source }
+}
+
+describe('list command boundary', () => {
+  it('posts only an allowlisted command to the exact provider origin and logs what was sent', () => {
+    const { messenger, postMessage, callbacks } = createMessenger()
+    messenger.send('focus-search')
+    const command = postMessage.mock.calls[0][0]
+
+    expect({
+      calls: postMessage.mock.calls,
+      entries: callbacks.onMessage.mock.calls,
+    }).toEqual({
+      calls: [
+        [
+          {
+            protocol: 'opaque-ui',
+            version: 1,
+            type: 'command',
+            channel,
+            request_id: expect.stringMatching(/^[A-Za-z0-9_:-]{1,128}$/),
+            action: 'focus-search',
+          },
+          providerOrigin,
+        ],
+      ],
+      entries: [[{ direction: 'host-to-iframe', message: command }]],
+    })
+  })
+
+  it('reports a matching acknowledgment once and never exposes the payload through onAction', () => {
+    const { messenger, postMessage, callbacks, resultEvent } = createMessenger()
+    messenger.send('clear-selection')
+    const event = resultEvent(postMessage.mock.calls[0][0])
+    messenger.receive(event)
+    messenger.receive(event)
+
+    expect({
+      actions: callbacks.onAction.mock.calls,
+      incoming: callbacks.onMessage.mock.calls.slice(1),
+    }).toEqual({
+      actions: [['clear-selection']],
+      incoming: [[{ direction: 'iframe-to-host', message: event.data }]],
+    })
+  })
+
+  it.each<
+    [
+      string,
+      { origin?: string; source?: Window; data?: Record<string, unknown> },
+    ]
+  >([
+    ['wrong origin', { origin: 'https://other.example' }],
+    ['another frame', { source: {} as Window }],
+    ['wrong channel', { data: { channel: 'other-channel' } }],
+    ['wrong action', { data: { action: 'clear-selection' } }],
+    ['arbitrary action', { data: { action: 'read-search' } }],
+    ['another request', { data: { request_id: 'rq_unknown' } }],
+    ['nonstring request', { data: { request_id: 1 } }],
+    ['private fields', { data: { search: 'private query' } }],
+    ['extra fields', { data: { extra: null } }],
+    ['wrong protocol', { data: { protocol: 'other' } }],
+    ['wrong version', { data: { version: 2 } }],
+  ])(
+    'ignores a result with %s without consuming the valid pending request',
+    (_, overrides) => {
+      const { messenger, postMessage, callbacks, resultEvent } =
+        createMessenger()
+      messenger.send('focus-search')
+      const event = resultEvent(postMessage.mock.calls[0][0])
+      messenger.receive({
+        ...event,
+        ...overrides,
+        data: { ...event.data, ...overrides.data },
+      })
+      const beforeValid = callbacks.onMessage.mock.calls.length
+      messenger.receive(event)
+
+      expect({ beforeValid, actions: callbacks.onAction.mock.calls }).toEqual({
+        beforeValid: 1,
+        actions: [['focus-search']],
+      })
+    },
+  )
+
+  it('ignores unsolicited acknowledgments', () => {
+    const { messenger, callbacks, resultEvent } = createMessenger()
+    messenger.receive(
+      resultEvent({
+        protocol: 'opaque-ui',
+        version: 1,
+        channel,
+        request_id: 'rq_unknown',
+        action: 'focus-search',
+      }),
+    )
+    expect({
+      actions: callbacks.onAction.mock.calls,
+      messages: callbacks.onMessage.mock.calls,
+    }).toEqual({ actions: [], messages: [] })
+  })
+
+  it('disposes pending requests and stops sending or receiving when a frame navigates or unmounts', () => {
+    const { messenger, postMessage, callbacks, resultEvent } = createMessenger()
+    messenger.send('focus-search')
+    const event = resultEvent(postMessage.mock.calls[0][0])
+    messenger.dispose()
+    messenger.receive(event)
+    messenger.send('clear-selection')
+    expect({
+      sent: postMessage.mock.calls.length,
+      actions: callbacks.onAction.mock.calls,
+      logs: callbacks.onMessage.mock.calls.length,
+    }).toEqual({ sent: 1, actions: [], logs: 1 })
+  })
+
+  it('bounds pending requests while allowing the newest acknowledgment', () => {
+    const { messenger, postMessage, callbacks, resultEvent } = createMessenger()
+    for (let request = 0; request < 33; request += 1)
+      messenger.send('focus-search')
+    messenger.receive(resultEvent(postMessage.mock.calls[0][0]))
+    messenger.receive(resultEvent(postMessage.mock.calls[32][0]))
+    expect(callbacks.onAction.mock.calls).toEqual([['focus-search']])
+  })
+
+  it('logs accepted selections while preserving the handle-only callback', () => {
+    const { messenger, callbacks, source } = createMessenger()
+    messenger.receive(selectionEvent({ source }))
+    expect({
+      selections: callbacks.onSelect.mock.calls,
+      messages: callbacks.onMessage.mock.calls,
+    }).toEqual({
+      selections: [['ct_k92x']],
+      messages: [[{ direction: 'iframe-to-host', message: selection }]],
+    })
+  })
+
+  it('does not log or track a command when posting fails', () => {
+    const { messenger, postMessage, callbacks } = createMessenger()
+    postMessage.mockImplementation(() => {
+      throw new Error('closed frame')
+    })
+    expect(() => messenger.send('focus-search')).toThrow('closed frame')
+    expect(callbacks.onMessage.mock.calls).toEqual([])
+  })
 })
 
 const expectedFrame = { origin: providerOrigin, source: frameWindow, channel }

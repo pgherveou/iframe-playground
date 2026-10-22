@@ -1,25 +1,34 @@
 import {
   createContext,
+  forwardRef,
   useContext,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react'
-import type { ReactNode } from 'react'
+import type { ForwardedRef, ReactNode } from 'react'
 import {
   createEmbedUrl,
-  getSelectedHandle,
+  createListMessenger,
   normalizeProviderOrigin,
 } from './protocol.js'
 import type {
   AvatarSize,
   ContactDensity,
+  ContactListCallbacks,
   ContactTheme,
   EmbedConfiguration,
 } from './protocol.js'
 
-export type { AvatarSize, ContactDensity, ContactTheme } from './protocol.js'
+export type {
+  AvatarSize,
+  ContactDensity,
+  ContactListAction,
+  ContactMessageEntry,
+  ContactTheme,
+} from './protocol.js'
 
 export interface ContactProviderProps {
   origin: string
@@ -40,13 +49,17 @@ export interface ContactProps {
   theme?: ContactTheme
 }
 
-export interface ContactListProps {
+export interface ContactListProps extends ContactListCallbacks {
   list_id: string
   avatar?: boolean
   username?: boolean
   density?: ContactDensity
   theme?: ContactTheme
-  onSelect?: (handle: string) => void
+}
+
+export interface ContactListRef {
+  focusSearch(): void
+  clearSelection(): void
 }
 
 const ProviderOrigin = createContext<string | null>(null)
@@ -71,30 +84,58 @@ export function ContactProvider({ origin, children }: ContactProviderProps) {
 
 function PrivateFrame({
   onSelect,
+  onAction,
+  onMessage,
+  listRef,
   ...configuration
-}: EmbedConfiguration & { onSelect?: (handle: string) => void }) {
+}: EmbedConfiguration &
+  ContactListCallbacks & { listRef?: ForwardedRef<ContactListRef> }) {
   const origin = useContext(ProviderOrigin)
   const frame = useRef<HTMLIFrameElement>(null)
   const channel = useId()
   const [parentOrigin, setParentOrigin] = useState<string | null>(null)
+  const messenger = useRef<ReturnType<typeof createListMessenger> | null>(null)
+  const callbacks = useRef({ onSelect, onAction, onMessage })
+  const src =
+    origin && parentOrigin
+      ? createEmbedUrl(origin, parentOrigin, channel, configuration)
+      : undefined
 
   useEffect(() => {
     setParentOrigin(window.location.origin)
   }, [])
 
   useEffect(() => {
-    if (!origin || !onSelect) return
-    const receiveSelection = (event: MessageEvent<unknown>) => {
-      const handle = getSelectedHandle(event, {
-        origin,
-        source: frame.current?.contentWindow ?? null,
-        channel,
-      })
-      if (handle !== null) onSelect(handle)
+    callbacks.current = { onSelect, onAction, onMessage }
+  }, [onSelect, onAction, onMessage])
+
+  useEffect(() => {
+    if (!origin || !src || configuration.component !== 'list') return
+    const connection = createListMessenger(
+      { origin, source: frame.current?.contentWindow ?? null, channel },
+      {
+        onSelect: (handle) => callbacks.current.onSelect?.(handle),
+        onAction: (action) => callbacks.current.onAction?.(action),
+        onMessage: (entry) => callbacks.current.onMessage?.(entry),
+      },
+    )
+    messenger.current = connection
+    window.addEventListener('message', connection.receive)
+    return () => {
+      connection.dispose()
+      messenger.current = null
+      window.removeEventListener('message', connection.receive)
     }
-    window.addEventListener('message', receiveSelection)
-    return () => window.removeEventListener('message', receiveSelection)
-  }, [origin, onSelect, channel])
+  }, [origin, src, channel, configuration.component])
+
+  useImperativeHandle(
+    listRef,
+    () => ({
+      focusSearch: () => messenger.current?.send('focus-search'),
+      clearSelection: () => messenger.current?.send('clear-selection'),
+    }),
+    [],
+  )
 
   if (!origin)
     throw new Error(
@@ -120,11 +161,7 @@ function PrivateFrame({
   return (
     <iframe
       ref={frame}
-      src={
-        parentOrigin
-          ? createEmbedUrl(origin, parentOrigin, channel, configuration)
-          : undefined
-      }
+      src={src}
       title={frameTitles[component]}
       data-private-component={component}
       width={width}
@@ -174,24 +211,34 @@ export function Contact({
   )
 }
 
-export function ContactList({
-  list_id,
-  avatar = true,
-  username = true,
-  density = 'comfortable',
-  theme = 'light',
-  onSelect,
-}: ContactListProps) {
-  return (
-    <PrivateFrame
-      component="list"
-      handle={list_id}
-      avatar={avatar}
-      username={username}
-      density={density}
-      theme={theme}
-      size="small"
-      onSelect={onSelect}
-    />
-  )
-}
+export const ContactList = forwardRef<ContactListRef, ContactListProps>(
+  function ContactList(
+    {
+      list_id,
+      avatar = true,
+      username = true,
+      density = 'comfortable',
+      theme = 'light',
+      onSelect,
+      onAction,
+      onMessage,
+    },
+    ref,
+  ) {
+    return (
+      <PrivateFrame
+        component="list"
+        handle={list_id}
+        avatar={avatar}
+        username={username}
+        density={density}
+        theme={theme}
+        size="small"
+        onSelect={onSelect}
+        onAction={onAction}
+        onMessage={onMessage}
+        listRef={ref}
+      />
+    )
+  },
+)

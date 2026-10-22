@@ -27,3 +27,56 @@ for (const row of rows) {
     )
   })
 }
+
+const commandFields = [
+  'protocol',
+  'version',
+  'type',
+  'channel',
+  'request_id',
+  'action',
+]
+
+window.addEventListener('message', (event) => {
+  if (
+    event.source !== window.parent ||
+    event.origin !== document.body.dataset.parentOrigin
+  )
+    return
+
+  const command = event.data
+  if (
+    !command ||
+    typeof command !== 'object' ||
+    Array.isArray(command) ||
+    Reflect.ownKeys(command).length !== commandFields.length ||
+    !commandFields.every((field) => Object.hasOwn(command, field)) ||
+    command.protocol !== 'opaque-ui' ||
+    command.version !== 1 ||
+    command.type !== 'command' ||
+    command.channel !== document.body.dataset.channel ||
+    typeof command.request_id !== 'string' ||
+    !/^[a-zA-Z0-9_:-]{1,128}$/.test(command.request_id) ||
+    (command.action !== 'focus-search' && command.action !== 'clear-selection')
+  )
+    return
+
+  if (command.action === 'focus-search') {
+    if (!search) return
+    search.focus()
+  } else {
+    for (const row of rows) row.setAttribute('aria-pressed', 'false')
+  }
+
+  window.parent.postMessage(
+    {
+      protocol: 'opaque-ui',
+      version: 1,
+      type: 'action-result',
+      channel: document.body.dataset.channel,
+      request_id: command.request_id,
+      action: command.action,
+    },
+    document.body.dataset.parentOrigin,
+  )
+})

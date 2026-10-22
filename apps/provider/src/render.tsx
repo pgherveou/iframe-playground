@@ -92,7 +92,7 @@ function ContactList({ config }: { config: EmbedConfig }) {
       </div>
       <footer className="list-footer">
         <span className="privacy-dot" />
-        Only a handle leaves this frame
+        Only handles and action confirmations leave
       </footer>
     </section>
   )

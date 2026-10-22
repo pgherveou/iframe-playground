@@ -1,5 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Avatar, Contact, ContactList, ContactProvider } from '@opaque-ui/react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  Avatar,
+  Contact,
+  ContactList,
+  ContactProvider,
+  type ContactListRef,
+  type ContactMessageEntry,
+} from '@opaque-ui/react'
+import MessageLog, { type LoggedMessage } from './MessageLog'
 import './styles.css'
 
 const providerOrigin = 'http://localhost:5184'
@@ -161,8 +169,20 @@ export default function App() {
   const [codeTab, setCodeTab] = useState<'react' | 'iframe'>('react')
   const [iframeMarkup, setIframeMarkup] = useState('')
   const [inspection, setInspection] = useState<Inspection | null>(null)
-  const [events, setEvents] = useState<string[]>([])
+  const [selectedHandle, setSelectedHandle] = useState<string | null>(null)
+  const [messages, setMessages] = useState<LoggedMessage[]>([])
+  const listRef = useRef<ContactListRef>(null)
+  const nextMessageId = useRef(0)
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    setSelectedHandle(null)
+  }, [kind, listId, avatar, username, theme, density])
+
+  function logMessage(entry: ContactMessageEntry) {
+    const message = { ...entry, id: nextMessageId.current++ }
+    setMessages((previous) => [...previous, message].slice(-8))
+  }
 
   useEffect(() => {
     if (codeTab !== 'iframe') return
@@ -340,10 +360,6 @@ export default function App() {
                   className={`preview-stage ${kind === 'list' ? 'list-stage' : ''}`}
                 >
                   <div className="isolated-region">
-                    <span className="origin-label">
-                      <Icon name="lock" size={12} />
-                      localhost:5184<span>PRIVATE ORIGIN</span>
-                    </span>
                     <div
                       className={`frame-mount ${kind === 'avatar' ? 'avatar-mount' : ''}`}
                     >
@@ -365,16 +381,18 @@ export default function App() {
                       )}
                       {kind === 'list' && (
                         <ContactList
+                          ref={listRef}
                           list_id={listId}
                           avatar={avatar}
                           username={username}
                           density={density}
                           theme={theme}
-                          onSelect={(handle) =>
-                            setEvents((previous) =>
-                              [handle, ...previous].slice(0, 3),
-                            )
-                          }
+                          onSelect={setSelectedHandle}
+                          onAction={(action) => {
+                            if (action === 'clear-selection')
+                              setSelectedHandle(null)
+                          }}
+                          onMessage={logMessage}
                         />
                       )}
                     </div>
@@ -485,9 +503,64 @@ export default function App() {
                 </div>
                 <div className="props-note">
                   <Icon name="arrow" size={16} />
-                  <p>Only this handle and these props cross into the iframe.</p>
+                  <p>
+                    {kind === 'list'
+                      ? 'Handles, presentation props, and explicit commands cross into the iframe.'
+                      : 'Only this handle and these props cross into the iframe.'}
+                  </p>
                 </div>
               </aside>
+            </div>
+            <div
+              className={`communication-area ${kind === 'list' ? 'with-controls' : ''}`}
+            >
+              {kind === 'list' && (
+                <section className="host-controls" aria-label="Host controls">
+                  <div className="host-controls-heading">
+                    <h3>Host controls</h3>
+                    <span>NO RELOAD</span>
+                  </div>
+                  <p>Send an action into the list. Its search stays private.</p>
+                  <div className="command-buttons">
+                    <button onClick={() => listRef.current?.focusSearch()}>
+                      Focus search
+                    </button>
+                    <button onClick={() => listRef.current?.clearSelection()}>
+                      Clear selection
+                    </button>
+                  </div>
+                  <div className="selected-handle">
+                    <span>Selected handle</span>
+                    <output aria-label="Selected contact handle">
+                      {selectedHandle ?? 'No contact selected'}
+                    </output>
+                  </div>
+                  <section
+                    className="selected-preview"
+                    aria-label="Selected contact preview"
+                  >
+                    {selectedHandle ? (
+                      <>
+                        <Contact contact_id={selectedHandle} theme={theme} />
+                        <p>
+                          The host passes this handle to a new Contact iframe.
+                        </p>
+                      </>
+                    ) : (
+                      <p>
+                        Select someone in the list to display their Contact
+                        iframe here.
+                      </p>
+                    )}
+                  </section>
+                </section>
+              )}
+              <MessageLog
+                messages={messages}
+                active={kind === 'list'}
+                onTryMessaging={() => changeComponent('list')}
+                onClear={() => setMessages([])}
+              />
             </div>
             <div className="public-input-bar">
               <span className="public-label">
@@ -615,28 +688,6 @@ export default function App() {
                     </>
                   )}
                 </div>
-              </div>
-              <div className="event-log" role="region" aria-label="Event log">
-                <div className="event-heading">
-                  <span>EVENT LOG</span>
-                  <span>ONLY OPAQUE HANDLES</span>
-                </div>
-                {events.length ? (
-                  events.map((handle, index) => (
-                    <div className="event-entry" key={`${handle}-${index}`}>
-                      <span>onSelect</span>
-                      <Icon name="arrow" size={12} />
-                      <code>{handle}</code>
-                      {index === 0 && (
-                        <span className="new-event">received</span>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p>
-                    Select a contact in the list to receive its handle here.
-                  </p>
-                )}
               </div>
             </section>
           </div>

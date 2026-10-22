@@ -364,27 +364,6 @@ h2 {
   padding: 23px 22px 0;
   background: #f4f8f57a;
 }
-.origin-label {
-  position: absolute;
-  top: -7px;
-  left: 15px;
-  background: #f7faf8;
-  padding: 0 7px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: monospace;
-  font-size: 11px;
-  color: #688e7a;
-  white-space: nowrap;
-}
-.origin-label > span {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 9px;
-  letter-spacing: 0.9px;
-  margin-left: 6px;
-  color: #8ea99b;
-}
 .frame-mount {
   border-radius: 10px;
   max-width: 100%;
@@ -805,42 +784,144 @@ select {
   background: #fff4ef;
   border-color: #f3dfd4;
 }
-.event-log {
+.communication-area {
   border-top: 1px solid #edf0f2;
-  padding: 13px 21px 15px;
+  background: #fcfdfc;
 }
+.communication-area.with-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.host-controls,
+.event-log {
+  min-width: 0;
+  padding: 22px 24px;
+}
+.host-controls {
+  border-right: 1px solid #edf0f2;
+}
+.host-controls-heading,
 .event-heading {
   display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  letter-spacing: 0.8px;
-  color: #99a5ad;
-}
-.event-heading > span + span {
-  font-size: 8px;
-  color: #b0b9bf;
-}
-.event-log p {
-  font-size: 10px;
-  line-height: 1.6;
-  color: #a5aeb5;
-  margin-top: 9px;
-}
-.event-entry {
-  display: flex;
-  gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.host-controls h3,
+.event-log h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #455a50;
+}
+.host-controls-heading > span,
+.event-heading > span {
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  color: #8b9b92;
+}
+.host-controls p,
+.event-empty {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #829088;
+}
+.command-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+}
+.command-buttons button {
+  border: 1px solid #d9e4dc;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: white;
+  color: #476b56;
+  font-size: 12px;
+}
+.command-buttons button:hover {
+  background: #f0f6f2;
+  border-color: #a9c4b3;
+}
+.selected-handle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 22px;
   font-size: 11px;
-  margin-top: 9px;
-  color: #98a4ac;
+  color: #8b9891;
 }
-.event-entry code {
-  color: #468269;
+.selected-handle output {
+  color: #4c6e5b;
+  font-family: monospace;
 }
-.new-event {
-  margin-left: auto;
+.selected-preview {
+  margin-top: 12px;
+}
+.selected-preview iframe {
+  display: block;
+  border-radius: 9px;
+}
+.selected-preview p {
+  font-size: 11px;
+}
+.event-heading button,
+.event-empty button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #54856b;
+  font-size: 11px;
+}
+.event-empty button {
+  margin-left: 12px;
+}
+.with-controls .event-empty {
+  padding: 30px 0;
+}
+.event-messages {
+  margin-top: 14px;
+  max-height: 400px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.event-entry + .event-entry {
+  margin-top: 12px;
+}
+.event-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #54856b;
+}
+.host-to-iframe .event-meta {
+  color: #627daa;
+}
+.event-meta code {
+  font-size: 10px;
+  color: #91a098;
+}
+.event-entry pre {
+  margin: 7px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #e7ece8;
+  border-radius: 6px;
+  background: white;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #6e7d75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.event-footnote {
+  margin-top: 10px;
   font-size: 9px;
-  color: #6c9a82;
+  color: #98a69e;
 }
 .flow-strip {
   display: flex;
@@ -1148,9 +1229,6 @@ footer p {
     flex-direction: column;
     gap: 10px;
   }
-  .origin-label > span {
-    display: none;
-  }
   .preview-stage.list-stage {
     padding-left: 12px;
     padding-right: 12px;
@@ -1162,9 +1240,6 @@ footer p {
   .frame-mount {
     min-width: 0;
   }
-  .origin-label {
-    font-size: 10px;
-  }
   .appearance-fields select {
     font-size: 12px;
   }
@@ -1174,8 +1249,12 @@ footer p {
   .inspector-body > p {
     font-size: 12px;
   }
-  .event-log p {
-    font-size: 11px;
+  .communication-area.with-controls {
+    grid-template-columns: 1fr;
+  }
+  .host-controls {
+    border-right: 0;
+    border-bottom: 1px solid #edf0f2;
   }
   .code-footer {
     font-size: 11px;

@@ -328,6 +328,261 @@ test('the package rejects selection messages with the wrong source, origin, or e
   await expect(eventLog).toContainText('ct_7hk2')
 })
 
+test('a selected opaque handle drives a separate contact preview beside the message log', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Contact list', exact: true }).click()
+  const list = componentFrame(page, 'list')
+  await expect(list.getByText('Maya Chen', { exact: true })).toBeVisible()
+  await expect(
+    page.getByLabel('Selected contact handle', { exact: true }),
+  ).toHaveText('No contact selected')
+  await list.getByRole('button', { name: /Maya Chen/ }).click()
+  await expect(
+    page.getByLabel('Selected contact handle', { exact: true }),
+  ).toHaveText('ct_7hk2')
+  const preview = page.getByRole('region', {
+    name: 'Selected contact preview',
+    exact: true,
+  })
+  await expect(
+    preview
+      .frameLocator('iframe[data-private-component="contact"]')
+      .getByText('Maya Chen', { exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('iframe[data-private-component]')).toHaveCount(2)
+  const playground = page.getByRole('region', {
+    name: 'Component playground',
+    exact: true,
+  })
+  await expect(
+    playground.getByRole('region', { name: 'Event log', exact: true }),
+  ).toContainText('ct_7hk2')
+  await expect(
+    page.getByRole('region', { name: 'Event log', exact: true }),
+  ).toHaveCount(1)
+  await expect(
+    playground.getByText('localhost:5184', { exact: true }),
+  ).toHaveCount(0)
+  await expectHostContainsNoContactData(page)
+})
+
+test('host commands focus search and clear selection without reloading the private list', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Contact list', exact: true }).click()
+  const list = componentFrame(page, 'list')
+  await expect(list.getByText('Maya Chen', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Focus search', exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Clear selection', exact: true }),
+  ).toBeVisible()
+  await page.evaluate((origin) => {
+    const target = window as Window & { receivedProviderMessages?: unknown[] }
+    target.receivedProviderMessages = []
+    window.addEventListener('message', (event) => {
+      if (event.origin === origin)
+        target.receivedProviderMessages!.push(event.data)
+    })
+  }, providerOrigin)
+  await list.locator('body').evaluate(() => {
+    const target = window as Window & { receivedCommands?: unknown[] }
+    target.receivedCommands = []
+    window.addEventListener('message', (event) => {
+      if (
+        event.origin === document.body.dataset.parentOrigin &&
+        event.source === window.parent
+      )
+        target.receivedCommands!.push(event.data)
+    })
+  })
+  const search = list.getByRole('searchbox')
+  await search.fill('Maya')
+  await list.getByRole('button', { name: /Maya Chen/ }).click()
+  await expect(list.getByRole('button', { name: /Maya Chen/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  const frameUrl = await page
+    .locator('iframe[data-private-component="list"]')
+    .getAttribute('src')
+  const documentToken = await list.locator('body').evaluate((body) => {
+    const token = crypto.randomUUID()
+    body.dataset.testDocument = token
+    return token
+  })
+  await page.getByRole('button', { name: 'Focus search', exact: true }).click()
+  await expect(search).toBeFocused()
+  await page
+    .getByRole('button', { name: 'Clear selection', exact: true })
+    .click()
+  await expect(list.getByRole('button', { name: /Maya Chen/ })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+  await expect(search).toHaveValue('Maya')
+  await expect(list.locator('body')).toHaveAttribute(
+    'data-test-document',
+    documentToken,
+  )
+  await expect(
+    page.locator('iframe[data-private-component="list"]'),
+  ).toHaveAttribute('src', frameUrl!)
+  await expect(
+    page.getByLabel('Selected contact handle', { exact: true }),
+  ).toHaveText('No contact selected')
+  await expect(
+    page
+      .getByRole('region', { name: 'Selected contact preview', exact: true })
+      .locator('iframe'),
+  ).toHaveCount(0)
+  await expectHostContainsNoContactData(page, ['Maya'])
+  const commands = await list
+    .locator('body')
+    .evaluate(
+      () =>
+        (window as Window & { receivedCommands?: Record<string, unknown>[] })
+          .receivedCommands!,
+    )
+  const channel = new URL(frameUrl!).searchParams.get('channel')
+  expect(commands).toEqual(
+    ['focus-search', 'clear-selection'].map((action) => ({
+      protocol: 'opaque-ui',
+      version: 1,
+      type: 'command',
+      channel,
+      request_id: expect.any(String),
+      action,
+    })),
+  )
+  expect(
+    commands.every((command) => String(command.request_id).length > 0),
+  ).toBe(true)
+  expect(commands[0].request_id).not.toBe(commands[1].request_id)
+  const providerMessages = await page.evaluate(
+    () =>
+      (window as Window & { receivedProviderMessages?: unknown[] })
+        .receivedProviderMessages,
+  )
+  expect(providerMessages).toEqual([
+    {
+      protocol: 'opaque-ui',
+      version: 1,
+      type: 'select',
+      channel,
+      handle: 'ct_7hk2',
+    },
+    ...commands.map((command) => ({ ...command, type: 'action-result' })),
+  ])
+  const eventLog = page.getByRole('region', { name: 'Event log', exact: true })
+  await expect(eventLog.locator('pre')).toHaveCount(5)
+  expect(
+    (await eventLog.locator('pre').allTextContents()).map((payload) =>
+      JSON.parse(payload),
+    ),
+  ).toEqual([
+    providerMessages![0],
+    commands[0],
+    providerMessages![1],
+    commands[1],
+    providerMessages![2],
+  ])
+  await expect(
+    eventLog.getByText('Host → iframe', { exact: true }),
+  ).toHaveCount(2)
+  await expect(
+    eventLog.getByText('Iframe → host', { exact: true }),
+  ).toHaveCount(3)
+})
+
+test('invalid commands and unsolicited action results cannot alter list selection or enter the message log', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Contact list', exact: true }).click()
+  const list = componentFrame(page, 'list')
+  const selectedRow = list.getByRole('button', { name: /Maya Chen/ })
+  await selectedRow.click()
+  await expect(
+    page.getByLabel('Selected contact handle', { exact: true }),
+  ).toHaveText('ct_7hk2')
+  const eventLog = page.getByRole('region', { name: 'Event log', exact: true })
+  const originalLog = await eventLog.innerText()
+  await page.evaluate((origin) => {
+    const target = window as Window & { receivedProviderMessages?: unknown[] }
+    target.receivedProviderMessages = []
+    window.addEventListener('message', (event) => {
+      if (event.isTrusted && event.origin === origin)
+        target.receivedProviderMessages!.push(event.data)
+    })
+  }, providerOrigin)
+  await list.locator('body').evaluate(() => {
+    const origin = document.body.dataset.parentOrigin!
+    const source = window.parent
+    const data = {
+      protocol: 'opaque-ui',
+      version: 1,
+      type: 'command',
+      channel: document.body.dataset.channel,
+      request_id: 'not-issued-by-host',
+      action: 'clear-selection',
+    }
+    for (const message of [
+      { data, origin, source: window },
+      { data, origin: window.location.origin, source },
+      { data: { ...data, channel: 'another-frame' }, origin, source },
+      { data: { ...data, username: '@private' }, origin, source },
+      { data: { ...data, action: 'reveal-contact' }, origin, source },
+      { data: { ...data, request_id: null }, origin, source },
+    ])
+      window.dispatchEvent(new MessageEvent<unknown>('message', message))
+  })
+  await page.evaluate((origin) => {
+    const iframe = document.querySelector<HTMLIFrameElement>(
+      'iframe[data-private-component="list"]',
+    )!
+    const source = iframe.contentWindow
+    const data = {
+      protocol: 'opaque-ui',
+      version: 1,
+      type: 'action-result',
+      channel: new URL(iframe.src).searchParams.get('channel'),
+      request_id: 'never-issued',
+      action: 'clear-selection',
+    }
+    for (const message of [
+      { data, origin, source },
+      { data, origin, source: window },
+      { data, origin: window.location.origin, source },
+      { data: { ...data, channel: 'another-frame' }, origin, source },
+      { data: { ...data, username: '@private' }, origin, source },
+      { data: { ...data, action: 'reveal-contact' }, origin, source },
+    ])
+      window.dispatchEvent(new MessageEvent<unknown>('message', message))
+  }, providerOrigin)
+  await expect(selectedRow).toHaveAttribute('aria-pressed', 'true')
+  await expect(eventLog).toHaveText(originalLog, { useInnerText: true })
+  await page.getByRole('button', { name: 'Focus search', exact: true }).click()
+  await expect(list.getByRole('searchbox')).toBeFocused()
+  await expect(eventLog.locator('pre')).toHaveCount(3)
+  const messages = (await eventLog.locator('pre').allTextContents()).map(
+    (payload) => JSON.parse(payload),
+  )
+  expect(
+    await page.evaluate(
+      () =>
+        (window as Window & { receivedProviderMessages?: unknown[] })
+          .receivedProviderMessages,
+    ),
+  ).toEqual([{ ...messages[1], type: 'action-result' }])
+  await expect(selectedRow).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    page.getByLabel('Selected contact handle', { exact: true }),
+  ).toHaveText('ct_7hk2')
+  await expectHostContainsNoContactData(page)
+})
+
 test('list contents and missing handles do not change the public frame dimensions', async ({
   page,
 }) => {
