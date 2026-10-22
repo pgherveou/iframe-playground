@@ -1,6 +1,7 @@
 export type AvatarSize = 'small' | 'medium' | 'large'
 export type ContactDensity = 'comfortable' | 'compact'
 export type ContactTheme = 'light' | 'dark'
+export type ContactIsolation = 'origin' | 'sandbox'
 export type ContactListAction = 'focus-search' | 'clear-selection'
 
 interface ContactMessage {
@@ -50,7 +51,11 @@ export interface EmbedConfiguration {
   size: AvatarSize
 }
 
-export function normalizeProviderOrigin(value: string, parentOrigin?: string) {
+export function normalizeProviderOrigin(
+  value: string,
+  parentOrigin?: string,
+  isolation: ContactIsolation = 'origin',
+) {
   const url = new URL(value)
   if (
     !['http:', 'https:'].includes(url.protocol) ||
@@ -64,7 +69,7 @@ export function normalizeProviderOrigin(value: string, parentOrigin?: string) {
       'ContactProvider requires an HTTP or HTTPS origin without a path or credentials.',
     )
   }
-  if (url.origin === parentOrigin) {
+  if (url.origin === parentOrigin && isolation !== 'sandbox') {
     throw new Error(
       'ContactProvider must use a separate origin to protect the iframe content.',
     )
@@ -72,13 +77,39 @@ export function normalizeProviderOrigin(value: string, parentOrigin?: string) {
   return url.origin
 }
 
+export function normalizeEmbedPath(value: string) {
+  const invalidPath = () =>
+    new Error(
+      'ContactProvider embedPath must be an absolute local pathname without query or fragment.',
+    )
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(value)
+  } catch {
+    throw invalidPath()
+  }
+  if (
+    !value.startsWith('/') ||
+    decoded.startsWith('//') ||
+    /[?#\\\u0000-\u0020\u007f]/.test(decoded)
+  ) {
+    throw invalidPath()
+  }
+  const origin = 'https://embed.invalid'
+  const url = new URL(value, origin)
+  if (url.origin !== origin || url.pathname.startsWith('//'))
+    throw invalidPath()
+  return url.pathname
+}
+
 export function createEmbedUrl(
   origin: string,
   parentOrigin: string,
   channel: string,
   configuration: EmbedConfiguration,
+  embedPath = '/embed',
 ) {
-  const url = new URL('/embed', origin)
+  const url = new URL(normalizeEmbedPath(embedPath), origin)
   url.search = new URLSearchParams({
     component: configuration.component,
     handle: configuration.handle,
@@ -178,7 +209,10 @@ export function createListMessenger(
         request_id: `rq_${crypto.randomUUID()}`,
         action,
       }
-      expected.source.postMessage(message, expected.origin)
+      expected.source.postMessage(
+        message,
+        expected.origin === 'null' ? '*' : expected.origin,
+      )
       pending.set(message.request_id, action)
       if (pending.size > 32) pending.delete(pending.keys().next().value!)
       callbacks.onMessage?.({ direction: 'host-to-iframe', message })

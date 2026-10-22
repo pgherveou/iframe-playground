@@ -12,11 +12,13 @@ import type { ForwardedRef, ReactNode } from 'react'
 import {
   createEmbedUrl,
   createListMessenger,
+  normalizeEmbedPath,
   normalizeProviderOrigin,
 } from './protocol.js'
 import type {
   AvatarSize,
   ContactDensity,
+  ContactIsolation,
   ContactListCallbacks,
   ContactTheme,
   EmbedConfiguration,
@@ -25,6 +27,7 @@ import type {
 export type {
   AvatarSize,
   ContactDensity,
+  ContactIsolation,
   ContactListAction,
   ContactMessageEntry,
   ContactTheme,
@@ -32,6 +35,8 @@ export type {
 
 export interface ContactProviderProps {
   origin: string
+  isolation?: ContactIsolation
+  embedPath?: string
   children: ReactNode
 }
 
@@ -62,7 +67,11 @@ export interface ContactListRef {
   clearSelection(): void
 }
 
-const ProviderOrigin = createContext<string | null>(null)
+const ProviderConfiguration = createContext<{
+  origin: string
+  isolation: ContactIsolation
+  embedPath: string
+} | null>(null)
 const avatarSizes = { small: 40, medium: 56, large: 88 }
 const frameTitles = {
   avatar: 'Private avatar',
@@ -70,15 +79,27 @@ const frameTitles = {
   list: 'Private contact list',
 }
 
-export function ContactProvider({ origin, children }: ContactProviderProps) {
+export function ContactProvider({
+  origin,
+  isolation = 'origin',
+  embedPath = '/embed',
+  children,
+}: ContactProviderProps) {
   const providerOrigin = normalizeProviderOrigin(
     origin,
     typeof window === 'undefined' ? undefined : window.location.origin,
+    isolation,
   )
   return (
-    <ProviderOrigin.Provider value={providerOrigin}>
+    <ProviderConfiguration.Provider
+      value={{
+        origin: providerOrigin,
+        isolation,
+        embedPath: normalizeEmbedPath(embedPath),
+      }}
+    >
       {children}
-    </ProviderOrigin.Provider>
+    </ProviderConfiguration.Provider>
   )
 }
 
@@ -90,15 +111,23 @@ function PrivateFrame({
   ...configuration
 }: EmbedConfiguration &
   ContactListCallbacks & { listRef?: ForwardedRef<ContactListRef> }) {
-  const origin = useContext(ProviderOrigin)
+  const provider = useContext(ProviderConfiguration)
+  const expectedOrigin =
+    provider?.isolation === 'sandbox' ? 'null' : provider?.origin
   const frame = useRef<HTMLIFrameElement>(null)
   const channel = useId()
   const [parentOrigin, setParentOrigin] = useState<string | null>(null)
   const messenger = useRef<ReturnType<typeof createListMessenger> | null>(null)
   const callbacks = useRef({ onSelect, onAction, onMessage })
   const src =
-    origin && parentOrigin
-      ? createEmbedUrl(origin, parentOrigin, channel, configuration)
+    provider && parentOrigin
+      ? createEmbedUrl(
+          provider.origin,
+          parentOrigin,
+          channel,
+          configuration,
+          provider.embedPath,
+        )
       : undefined
 
   useEffect(() => {
@@ -110,9 +139,13 @@ function PrivateFrame({
   }, [onSelect, onAction, onMessage])
 
   useEffect(() => {
-    if (!origin || !src || configuration.component !== 'list') return
+    if (!expectedOrigin || !src || configuration.component !== 'list') return
     const connection = createListMessenger(
-      { origin, source: frame.current?.contentWindow ?? null, channel },
+      {
+        origin: expectedOrigin,
+        source: frame.current?.contentWindow ?? null,
+        channel,
+      },
       {
         onSelect: (handle) => callbacks.current.onSelect?.(handle),
         onAction: (action) => callbacks.current.onAction?.(action),
@@ -126,7 +159,7 @@ function PrivateFrame({
       messenger.current = null
       window.removeEventListener('message', connection.receive)
     }
-  }, [origin, src, channel, configuration.component])
+  }, [expectedOrigin, src, channel, configuration.component])
 
   useImperativeHandle(
     listRef,
@@ -137,7 +170,7 @@ function PrivateFrame({
     [],
   )
 
-  if (!origin)
+  if (!provider)
     throw new Error(
       'Private contact components must be wrapped in a ContactProvider.',
     )
@@ -160,13 +193,18 @@ function PrivateFrame({
 
   return (
     <iframe
+      key={provider.isolation}
       ref={frame}
       src={src}
       title={frameTitles[component]}
       data-private-component={component}
       width={width}
       height={height}
-      sandbox="allow-scripts allow-same-origin"
+      sandbox={
+        provider.isolation === 'sandbox'
+          ? 'allow-scripts'
+          : 'allow-scripts allow-same-origin'
+      }
       referrerPolicy="no-referrer"
       style={{ display: 'block', width, maxWidth: '100%', height, border: 0 }}
     />

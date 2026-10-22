@@ -1,6 +1,6 @@
 # @opaque-ui/react
 
-React components that let a separate-origin provider render private contact data inside iframes. The host supplies opaque handles and presentation props.
+React components that let a provider render contact data inside isolated iframes. The host supplies opaque handles and presentation props.
 
 ```tsx
 import { useRef } from 'react'
@@ -30,11 +30,11 @@ export function People() {
 }
 ```
 
-The provider origin is required and must differ from the host origin. The provider must support the `/embed` route and allow the host origin. This prototype package does not include provider authentication.
+The provider origin is required and, by default, must differ from the host origin. The provider must support the `/embed` route and allow the host origin. This prototype package does not include provider authentication.
 
 | Component         | Props                                                                                                                                    |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `ContactProvider` | Required `origin` and `children`                                                                                                         |
+| `ContactProvider` | Required `origin` and `children`; `isolation`: `origin` (default) or `sandbox`; `embedPath`: absolute pathname, default `/embed`         |
 | `Avatar`          | Required `contact_id`; `size`: `small`, `medium` (default), or `large`; `theme`: `light` (default) or `dark`                             |
 | `Contact`         | Required `contact_id`; `avatar` and `username` default to `true`; `density`: `comfortable` (default) or `compact`; `theme`               |
 | `ContactList`     | Required `list_id`; same presentation props as `Contact`; optional `ref`, `onSelect(handle)`, `onAction(action)`, and `onMessage(entry)` |
@@ -47,6 +47,22 @@ Selection delivers only an opaque contact handle after validating the sender's o
 
 `onMessage` receives a `ContactMessageEntry` with `direction` (`'host-to-iframe'` or `'iframe-to-host'`) and the actual posted or accepted `message`. Command messages contain exactly `protocol`, `version`, `type: 'command'`, `channel`, `request_id`, and `action`. Acknowledgments use the same shape with `type: 'action-result'`. Selection messages contain exactly `protocol`, `version`, `type: 'select'`, `channel`, and `handle`. The protocol is `'opaque-ui'`, version `1`.
 
-Commands use the configured provider as the exact target origin. Incoming messages must match that origin, the iframe window, the channel, and an exact schema. An acknowledgment must also match a pending request and action; unsolicited and duplicate results are ignored. The wrapper tracks at most 32 outstanding commands and discards them when presentation props navigate the frame or it unmounts. There is no arbitrary messaging API, and no ready or resize messages are emitted.
+In the default `origin` mode, commands use the configured provider as the exact target origin. Incoming messages must match that origin, the iframe window, the channel, and an exact schema. An acknowledgment must also match a pending request and action; unsolicited and duplicate results are ignored. The wrapper tracks at most 32 outstanding commands and discards them when presentation props navigate the frame or it unmounts. There is no arbitrary messaging API, and no ready or resize messages are emitted.
+
+For a static fictional-data demo hosted alongside its renderer, explicitly opt into sandbox isolation:
+
+```tsx
+<ContactProvider
+  origin="https://pgherveou.github.io"
+  isolation="sandbox"
+  embedPath="/iframe-playground/provider/index.html"
+>
+  <ContactList list_id="ls_4dn9" />
+</ContactProvider>
+```
+
+Sandbox mode allows the same URL origin and sets `sandbox="allow-scripts"`, omitting `allow-same-origin` so the renderer has an opaque origin. Incoming messages must have origin `'null'` and still match the exact iframe window, channel, and schema. Commands use `'*'` as their target origin for that frame because opaque origins cannot be addressed by URL. Changing isolation modes replaces the frame so the new sandbox policy takes effect.
+
+`embedPath` supports project subdirectories and rejects external URLs, protocol-relative URLs, query strings, fragments, and ambiguous separators. Sandbox mode demonstrates iframe DOM isolation; publicly shipped fixture data and assets remain readable through direct requests. Use the separate-origin provider with authorization for real private data.
 
 The browser's same-origin policy prevents host scripts from reading iframe content. The provider must separately authorize data access before this architecture is used with real personal data.

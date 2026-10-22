@@ -380,3 +380,151 @@ describe('iframe configuration', () => {
     },
   )
 })
+
+describe('explicit opaque sandbox isolation', () => {
+  const hostOrigin = 'https://pgherveou.github.io'
+  const embedPath = '/iframe-playground/provider/index.html'
+  const configuration = {
+    component: 'contact' as const,
+    handle: 'ct_k92x',
+    avatar: true,
+    username: true,
+    density: 'comfortable' as const,
+    theme: 'light' as const,
+    size: 'medium' as const,
+  }
+
+  it('allows a same-origin URL only when sandbox isolation is explicitly selected', () => {
+    expect(normalizeProviderOrigin(hostOrigin, hostOrigin, 'sandbox')).toBe(
+      hostOrigin,
+    )
+    expect(() => normalizeProviderOrigin(hostOrigin, hostOrigin)).toThrow(
+      'separate origin',
+    )
+  })
+
+  it('removes allow-same-origin so the renderer receives an opaque origin', () => {
+    const markup = renderToStaticMarkup(
+      createElement(ContactProvider, {
+        origin: hostOrigin,
+        isolation: 'sandbox',
+        embedPath,
+        children: createElement(Contact, { contact_id: 'ct_k92x' }),
+      }),
+    )
+    expect(markup.match(/sandbox="([^"]+)"/)?.[1]).toBe('allow-scripts')
+  })
+
+  it('resolves a Pages project renderer path without changing the origin or public props', () => {
+    const url = new URL(
+      createEmbedUrl(hostOrigin, hostOrigin, channel, configuration, embedPath),
+    )
+    expect({
+      origin: url.origin,
+      path: url.pathname,
+      handle: url.searchParams.get('handle'),
+      parent: url.searchParams.get('parent_origin'),
+    }).toEqual({
+      origin: hostOrigin,
+      path: embedPath,
+      handle: 'ct_k92x',
+      parent: hostOrigin,
+    })
+  })
+
+  it.each([
+    '//attacker.example/embed',
+    'https://attacker.example/embed',
+    'relative/embed',
+    '/\\attacker.example/embed',
+    '/%5cattacker.example/embed',
+    '/%2fattacker.example/embed',
+    '/provider/index.html?redirect=https://attacker.example',
+    '/provider/index.html#fragment',
+    '/\n/attacker.example/embed',
+  ])(
+    'rejects an embed path that is not an unambiguous local pathname: %s',
+    (path) => {
+      expect(() =>
+        createEmbedUrl(hostOrigin, hostOrigin, channel, configuration, path),
+      ).toThrow('pathname')
+    },
+  )
+
+  it('rejects invalid embed paths during server rendering before any frame can navigate', () => {
+    expect(() =>
+      renderToStaticMarkup(
+        createElement(ContactProvider, {
+          origin: hostOrigin,
+          isolation: 'sandbox',
+          embedPath: '//attacker.example/embed',
+          children: createElement(ContactList, { list_id: 'ls_4dn9' }),
+        }),
+      ),
+    ).toThrow('pathname')
+  })
+
+  it('accepts null-origin selections only from the expected frame and channel', () => {
+    const expected = { ...expectedFrame, origin: 'null' }
+    expect([
+      getSelectedHandle(selectionEvent({ origin: 'null' }), expected),
+      getSelectedHandle(
+        selectionEvent({ origin: 'null', source: {} as Window }),
+        expected,
+      ),
+      getSelectedHandle(
+        selectionEvent({
+          origin: 'null',
+          data: { ...selection, channel: 'other' },
+        }),
+        expected,
+      ),
+      getSelectedHandle(selectionEvent({ origin: hostOrigin }), expected),
+      getSelectedHandle(
+        selectionEvent({
+          origin: 'null',
+          data: { ...selection, username: 'Private name' },
+        }),
+        expected,
+      ),
+    ]).toEqual(['ct_k92x', null, null, null, null])
+  })
+
+  it('uses the opaque-origin target only for sandbox commands and correlates their real results', () => {
+    const postMessage = vi.fn()
+    const source = { postMessage } as unknown as Window
+    const onAction = vi.fn()
+    const onMessage = vi.fn()
+    const messenger = createListMessenger(
+      { origin: 'null', source, channel },
+      { onAction, onMessage },
+    )
+    messenger.send('focus-search')
+    const command = postMessage.mock.calls[0][0]
+    const event = {
+      origin: 'null',
+      source,
+      data: { ...command, type: 'action-result' },
+    }
+    messenger.receive({ ...event, source: {} as Window })
+    messenger.receive({ ...event, origin: hostOrigin })
+    messenger.receive({ ...event, data: { ...event.data, channel: 'other' } })
+    const beforeValid = onAction.mock.calls.length
+    messenger.receive(event)
+    messenger.receive(event)
+    expect({
+      target: postMessage.mock.calls[0][1],
+      beforeValid,
+      actions: onAction.mock.calls,
+      logs: onMessage.mock.calls,
+    }).toEqual({
+      target: '*',
+      beforeValid: 0,
+      actions: [['focus-search']],
+      logs: [
+        [{ direction: 'host-to-iframe', message: command }],
+        [{ direction: 'iframe-to-host', message: event.data }],
+      ],
+    })
+  })
+})

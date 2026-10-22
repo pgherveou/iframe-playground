@@ -2,6 +2,32 @@
 
 A working prototype of private contact components for React. The host passes an opaque handle and presentation props. A provider on another origin resolves the handle and renders the personal information inside an iframe.
 
+## Live demo
+
+[Open the GitHub Pages playground](https://pgherveou.github.io/iframe-playground/).
+
+The hosted demo serves the playground and renderer from the same website. It uses `sandbox="allow-scripts"` without `allow-same-origin`, so each active iframe has an opaque origin and the host's DOM-access test still fails with `SecurityError`. Selection, focus, clear, and the message log work across that sandbox.
+
+**The static demo's fictional data is public.** Its renderer bundle and avatars can be fetched by the host or anyone else. The host also controls the sandbox attribute and could remove it and reload the frame. This demonstrates component composition and sandboxed DOM access, not confidentiality against a malicious embedding application. The separate-origin Node provider below remains the default local mode.
+
+To build and check the same-site version locally:
+
+```sh
+npm run build:pages
+npm run test:pages
+npm run preview:pages
+```
+
+Open **http://localhost:5185/iframe-playground/**. This version needs only one static web server. The build includes the renderer at `provider/index.html`, a classic bundled script, styles, and avatars; all asset URLs respect the project path.
+
+The [Pages workflow](.github/workflows/pages.yml) builds, checks formatting, runs unit and browser tests, and deploys on pushes to `main`. Repository Settings → Pages uses **GitHub Actions** as the publishing source. To run the same browser checks against the live site:
+
+```sh
+PAGES_URL=https://pgherveou.github.io/iframe-playground/ npm run test:pages
+```
+
+In sandbox mode, provider messages have origin `"null"` and must also match the exact iframe window, channel, schema, and pending request. Commands to an opaque-origin iframe require `targetOrigin: "*"`; these commands contain only public action metadata. The default separate-origin mode keeps its exact origin checks and target origin.
+
 ## Run locally
 
 Requires Node.js 22.12+ and npm. Both servers bind to localhost.
@@ -116,7 +142,7 @@ Commands and their acknowledgments have the same fields. The result changes only
 
 ## Scope of the privacy claim
 
-This demonstrates isolation from **JavaScript running in the host page**. The browser user, accessibility tools, extensions with sufficient permissions, screenshots, and an external HTTP client can still see rendered information. The demo provider is unauthenticated, so the host's backend could fetch it directly. Opaque handles and CORS are not access control.
+The default separate-origin mode demonstrates isolation from **JavaScript running in the host page**. The browser user, accessibility tools, extensions with sufficient permissions, screenshots, and an external HTTP client can still see rendered information. The demo provider is unauthenticated, so the host's backend could fetch it directly. Opaque handles and CORS are not access control. The same-site Pages demo has the additional limitations described above.
 
 Before using real data, the provider needs authentication, authorization scoped to each handle and embedding app, and a supported cross-site session strategy. Different localhost ports demonstrate different origins, but do not reproduce third-party cookie restrictions. Fixed geometry reduces one disclosure path; this prototype does not claim to eliminate every timing or other side channel.
 
@@ -150,6 +176,7 @@ To serve the built demo, use `npm run preview`.
 | `apps/host`            | Interactive playground and live host-side inspector        |
 | `apps/provider/src`    | Private fictional records, HTML rendering, and HTTP policy |
 | `apps/provider/public` | Provider CSS and private list interaction script           |
+| `apps/provider/static` | Static iframe HTML shell for the same-site Pages demo      |
 | `tests/unit`           | Package API and protocol validation                        |
 | `tests/integration`    | Provider behavior, input validation, and HTTP headers      |
 | `tests/e2e`            | Real browser isolation and component behavior              |

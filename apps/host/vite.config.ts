@@ -5,8 +5,9 @@ import react from '@vitejs/plugin-react'
 const localPath = (relative: string) =>
   fileURLToPath(new URL(relative, import.meta.url))
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   root: localPath('.'),
+  base: mode === 'pages' ? '/iframe-playground/' : '/',
   plugins: [react()],
   resolve: {
     alias:

@@ -10,7 +10,13 @@ import {
 import MessageLog, { type LoggedMessage } from './MessageLog'
 import './styles.css'
 
-const providerOrigin = 'http://localhost:5184'
+const staticDemo = import.meta.env.MODE === 'pages'
+const providerOrigin = staticDemo
+  ? window.location.origin
+  : 'http://localhost:5184'
+const embedPath = staticDemo
+  ? `${import.meta.env.BASE_URL}provider/index.html`
+  : '/embed'
 type ComponentKind = 'contact' | 'avatar' | 'list'
 type IconName =
   | 'window'
@@ -204,7 +210,7 @@ export default function App() {
     kind === 'avatar'
       ? `    contact_id="${contactId}"\n    size="${size}"`
       : `    ${kind === 'list' ? 'list_id' : 'contact_id'}="${kind === 'list' ? listId : contactId}"\n    avatar={${avatar}}\n    username={${username}}\n    density="${density}"`
-  const source = `import { ${componentName}, ContactProvider } from '@opaque-ui/react'\n\n<ContactProvider origin="${providerOrigin}">\n  <${componentName}\n${propLines}\n    theme="${theme}"${kind === 'list' ? '\n    onSelect={(handle) => console.log(handle)}' : ''}\n  />\n</ContactProvider>`
+  const source = `import { ${componentName}, ContactProvider } from '@opaque-ui/react'\n\n<ContactProvider origin="${providerOrigin}"${staticDemo ? `\n  isolation="sandbox"\n  embedPath="${embedPath}"\n` : ''}>\n  <${componentName}\n${propLines}\n    theme="${theme}"${kind === 'list' ? '\n    onSelect={(handle) => console.log(handle)}' : ''}\n  />\n</ContactProvider>`
 
   function testAccess() {
     const frame = document.querySelector<HTMLIFrameElement>(
@@ -268,7 +274,11 @@ export default function App() {
   }
 
   return (
-    <ContactProvider origin={providerOrigin}>
+    <ContactProvider
+      origin={providerOrigin}
+      isolation={staticDemo ? 'sandbox' : 'origin'}
+      embedPath={embedPath}
+    >
       <div className="app-shell">
         <header className="site-header">
           <a className="brand" href="#" aria-label="Opaque UI home">
@@ -289,7 +299,8 @@ export default function App() {
           </nav>
           <span className="local-status">
             <span className="status-dot" />
-            Local prototype<span className="version">v0.1</span>
+            {staticDemo ? 'Static demo' : 'Local prototype'}
+            <span className="version">v0.1</span>
           </span>
         </header>
 
@@ -297,13 +308,20 @@ export default function App() {
           <section className="intro">
             <div className="eyebrow">
               <span className="mini-line" />
-              PRIVATE BY COMPOSITION
+              {staticDemo
+                ? 'ISOLATED BY COMPOSITION'
+                : 'PRIVATE BY COMPOSITION'}
             </div>
             <h1>
-              Identity, without exposure<span>.</span>
+              {staticDemo
+                ? 'A component. Its own world'
+                : 'Identity, without exposure'}
+              <span>.</span>
             </h1>
             <p>
-              Give your app a familiar face. Keep the personal data private.
+              {staticDemo
+                ? 'Explore sandboxed components and two-way messaging.'
+                : 'Give your app a familiar face. Keep the personal data private.'}
               <br className="desktop-break" /> Real components, rendered across
               an iframe boundary.
             </p>
@@ -710,8 +728,16 @@ export default function App() {
                 <Icon name="lock" size={20} />
               </span>
               <div>
-                <strong>The private provider</strong>
-                <p>Resolve and render on its own origin</p>
+                <strong>
+                  {staticDemo
+                    ? 'The sandboxed renderer'
+                    : 'The private provider'}
+                </strong>
+                <p>
+                  {staticDemo
+                    ? 'Resolve and render inside the iframe'
+                    : 'Resolve and render on its own origin'}
+                </p>
               </div>
             </div>
             <span className="flow-arrow">
@@ -732,8 +758,9 @@ export default function App() {
               opaque/ui<span>Explore the boundary.</span>
             </span>
             <p>
-              Fictional data · Browser isolation demo · Production requires
-              provider authentication
+              {staticDemo
+                ? 'Static demo · Fictional data is public · Iframe DOM is sandboxed'
+                : 'Fictional data · Browser isolation demo · Production requires provider authentication'}
             </p>
           </footer>
         </main>
