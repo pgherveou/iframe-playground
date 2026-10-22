@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vite/client"],
+    "paths": { "@opaque-ui/react": ["./packages/react/src/index.tsx"] }
+  },
+  "include": ["apps", "packages", "tests", "*.config.ts"],
+  "exclude": ["**/dist", "node_modules"]
+}

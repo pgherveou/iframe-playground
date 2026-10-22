@@ -1,0 +1,280 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #283c38;
+  color-scheme: light;
+  --surface: #fff;
+  --muted-surface: #f5f7f6;
+  --border: #e5ebe8;
+  --muted: #81908b;
+  --accent: #2c7e67;
+  --selected: #edf6f1;
+}
+
+:root[data-theme='dark'] {
+  color: #edf4f0;
+  color-scheme: dark;
+  --surface: #1b292d;
+  --muted-surface: #223236;
+  --border: #344448;
+  --muted: #9aaea7;
+  --accent: #a4d9c2;
+  --selected: #2b433c;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: transparent;
+}
+button,
+input {
+  font: inherit;
+}
+[hidden] {
+  display: none !important;
+}
+.avatar-image {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.standalone-avatar {
+  width: 56px;
+  height: 56px;
+}
+.standalone-avatar .avatar-image {
+  width: 100%;
+  height: 100%;
+}
+.size-small .standalone-avatar {
+  width: 40px;
+  height: 40px;
+}
+.size-large .standalone-avatar {
+  width: 88px;
+  height: 88px;
+}
+.contact-card {
+  height: 88px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+.density-compact .contact-card {
+  height: 68px;
+  padding: 12px 15px;
+}
+.density-compact .contact-card .avatar-image {
+  width: 38px;
+  height: 38px;
+}
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+}
+.contact-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.contact-username {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.private-contact {
+  font-size: 13px;
+  color: var(--muted);
+}
+.contact-list {
+  height: 360px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.list-heading {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 0 3px;
+}
+.list-heading h1 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+.contact-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.search-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+.search-wrapper input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 10px 0 31px;
+  font-size: 11px;
+  background: var(--muted-surface);
+  color: inherit;
+}
+.search-wrapper input::placeholder {
+  color: var(--muted);
+}
+.search-wrapper input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.search-icon {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  height: 14px;
+  width: 14px;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  fill: none;
+  pointer-events: none;
+}
+.contact-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.contact-row {
+  border: 0;
+  border-radius: 7px;
+  color: inherit;
+  background: transparent;
+  padding: 6px 8px;
+  min-height: 47px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.contact-row:hover {
+  background: var(--muted-surface);
+}
+.contact-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.contact-row[aria-pressed='true'] {
+  background: var(--selected);
+}
+.contact-row .avatar-image {
+  width: 33px;
+  height: 33px;
+}
+.contact-row .contact-info {
+  gap: 3px;
+}
+.contact-row .contact-name {
+  font-size: 12px;
+}
+.contact-row .contact-username {
+  font-size: 10px;
+}
+.density-compact .contact-row {
+  min-height: 39px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.density-compact .contact-row .avatar-image {
+  width: 29px;
+  height: 29px;
+}
+.selection-mark {
+  margin-left: auto;
+  color: var(--accent);
+  opacity: 0;
+  font-size: 12px;
+}
+.contact-row[aria-pressed='true'] .selection-mark {
+  opacity: 1;
+}
+.list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 9px;
+  flex-shrink: 0;
+}
+.privacy-dot {
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.no-results {
+  text-align: center;
+  margin: 24px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.unavailable {
+  width: 100%;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+.density-compact .unavailable-contact {
+  height: 68px;
+}
+.unavailable-list {
+  height: 360px;
+}
+.unavailable-avatar {
+  height: 56px;
+  font-size: 9px;
+  border-radius: 50%;
+}
+.size-small .unavailable-avatar {
+  height: 40px;
+  font-size: 7px;
+}
+.size-large .unavailable-avatar {
+  height: 88px;
+  font-size: 11px;
+}
