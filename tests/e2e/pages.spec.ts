@@ -251,6 +251,23 @@ test('Pages supports both message directions from the opaque sandbox without rel
   await expectHostContainsNoContactData(page)
 })
 
+test('a visible Pages list accepts its first interaction without a follow-up script request', async ({
+  page,
+}) => {
+  await page.route('**/provider/component.js', (route) => route.abort())
+  await page.getByRole('button', { name: 'Contact list', exact: true }).click()
+  const frame = componentFrame(page, 'list')
+  await frame.getByRole('button', { name: /Maya Chen/ }).click()
+  await expect(
+    page.getByLabel('Selected contact handle', { exact: true }),
+  ).toHaveText('ct_7hk2')
+  await page.getByRole('button', { name: 'Focus search', exact: true }).click()
+  await expect(frame.getByRole('searchbox')).toBeFocused()
+  await expect(
+    page.getByRole('region', { name: 'Event log', exact: true }).locator('pre'),
+  ).toHaveCount(3)
+})
+
 test('Pages rejects null-origin selection messages from a different window', async ({
   page,
 }) => {

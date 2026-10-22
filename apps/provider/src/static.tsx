@@ -2,6 +2,7 @@ import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { parseConfig } from './config.js'
 import { EmbedContent } from './embed-content.js'
+import '../public/component.js'
 
 const url = new URL(window.location.href)
 const config = parseConfig(url.searchParams, url.origin)
@@ -17,9 +18,4 @@ if (!config) {
   flushSync(() => {
     root.render(<EmbedContent config={config} avatarBase="./avatars" />)
   })
-  if (config.component === 'list') {
-    const script = document.createElement('script')
-    script.src = './component.js'
-    document.body.append(script)
-  }
 }

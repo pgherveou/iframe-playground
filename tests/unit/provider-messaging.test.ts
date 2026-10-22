@@ -29,7 +29,7 @@ class ContactRow extends EventTarget {
   }
 }
 
-function createComponent(available = true) {
+function createComponent(available = true, ready = true) {
   const messages: { data: unknown; targetOrigin: string }[] = []
   const parent = {
     postMessage(data: unknown, targetOrigin: string) {
@@ -49,7 +49,7 @@ function createComponent(available = true) {
       ]
     : []
   const emptyState = { hidden: true }
-  const document = {
+  const document = Object.assign(new EventTarget(), {
     body: { dataset: { parentOrigin, channel } },
     activeElement: null as EventTarget | null,
     querySelector(selector: string) {
@@ -59,9 +59,10 @@ function createComponent(available = true) {
     querySelectorAll() {
       return rows
     },
-  }
+  })
   const window = Object.assign(new EventTarget(), { parent })
   runInNewContext(script, { document, window })
+  if (ready) document.dispatchEvent(new Event('DOMContentLoaded'))
 
   return {
     document,
@@ -86,6 +87,42 @@ function createComponent(available = true) {
 }
 
 describe('provider message handling', () => {
+  it('waits for document readiness before binding the mounted list', () => {
+    const component = createComponent(true, false)
+    component.rows[0].dispatchEvent(new Event('click'))
+    component.receive(command)
+    expect({
+      focused: component.document.activeElement,
+      messages: component.messages,
+    }).toEqual({ focused: null, messages: [] })
+
+    component.document.dispatchEvent(new Event('DOMContentLoaded'))
+    component.rows[0].dispatchEvent(new Event('click'))
+    component.receive(command)
+    expect({
+      focused: component.document.activeElement === component.search,
+      messages: component.messages,
+    }).toEqual({
+      focused: true,
+      messages: [
+        {
+          data: {
+            protocol: 'opaque-ui',
+            version: 1,
+            type: 'select',
+            channel,
+            handle: 'ct_first',
+          },
+          targetOrigin: parentOrigin,
+        },
+        {
+          data: { ...command, type: 'action-result' },
+          targetOrigin: parentOrigin,
+        },
+      ],
+    })
+  })
+
   it('keeps initialization and search private and only sends a handle on selection', () => {
     const component = createComponent()
     component.filter('first')
